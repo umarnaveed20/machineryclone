@@ -26,6 +26,7 @@ const (
 	messageVisibilitySet = "message-visibility-set"
 	hSetMessageKey       = "message"
 	hSetQueueKey         = "queue"
+	hSetRetryKey         = "visibility_counter"
 	taskPrefix           = "task_%s"
 )
 
@@ -47,19 +48,19 @@ func NewGR_DLQ(cnf *config.Config, addrs []string, password string, db int) ifac
 	b := &BrokerGR_DLQ{Broker: common.NewBroker(cnf)}
 
 	ropt := &redis.UniversalOptions{
-		Addrs:    addrs,
-		DB:       db,
-		Password: password,
-		ReadTimeout: time.Duration(cnf.Redis.ReadTimeout) * time.Second,
-		WriteTimeout: time.Duration(cnf.Redis.WriteTimeout) * time.Second,
-		DialTimeout: time.Duration(cnf.Redis.ConnectTimeout) * time.Second,
-		IdleTimeout: time.Duration(cnf.Redis.IdleTimeout) * time.Second,
-		MinIdleConns: cnf.Redis.MinIdleConns,
+		Addrs:           addrs,
+		DB:              db,
+		Password:        password,
+		ReadTimeout:     time.Duration(cnf.Redis.ReadTimeout) * time.Second,
+		WriteTimeout:    time.Duration(cnf.Redis.WriteTimeout) * time.Second,
+		DialTimeout:     time.Duration(cnf.Redis.ConnectTimeout) * time.Second,
+		IdleTimeout:     time.Duration(cnf.Redis.IdleTimeout) * time.Second,
+		MinIdleConns:    cnf.Redis.MinIdleConns,
 		MinRetryBackoff: time.Duration(cnf.Redis.MinRetryBackoff) * time.Millisecond,
 		MaxRetryBackoff: time.Duration(cnf.Redis.MaxRetryBackoff) * time.Millisecond,
-		MaxRetries: cnf.Redis.MaxRetries,
-		PoolSize: cnf.Redis.PoolSize,
-		TLSConfig: cnf.TLSConfig,
+		MaxRetries:      cnf.Redis.MaxRetries,
+		PoolSize:        cnf.Redis.PoolSize,
+		TLSConfig:       cnf.TLSConfig,
 	}
 	if cnf.Redis != nil {
 		// if we're specifying MasterName here, then we'll always connect to db 0, since provided db is ignored in cluster mode
@@ -312,6 +313,19 @@ func (b *BrokerGR_DLQ) consumeOne(delivery []byte, taskProcessor iface.TaskProce
 		b.rclient.RPush(getQueueGR(b.GetConfig(), taskProcessor), delivery)
 		return nil
 	}
+
+	sliceCmd := b.rclient.HMGet(gHash, hSetRetryKey)
+	if err := sliceCmd.Err(); err != nil {
+		log.ERROR.Printf("Could not retrieve message keys from redis. Err: %s. DB: %", err.Error())
+	}
+	values := sliceCmd.Val()
+
+	retryCount := 0
+	if values[0] != nil {
+		retryCount = values[0].(int)
+	}
+
+	signature.RetryCount = retryCount
 
 	log.DEBUG.Printf("Received new message: %+v", signature)
 	log.INFO.Printf("Processing task. Old UUID: %s New UUID: %s", oldUuid, signature.UUID)
