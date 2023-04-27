@@ -316,13 +316,17 @@ func (b *BrokerGR_DLQ) consumeOne(delivery []byte, taskProcessor iface.TaskProce
 
 	stringCmd := b.rclient.HGet(gHash, hSetRetryKey)
 	if err := stringCmd.Err(); err != nil {
-		log.ERROR.Printf("Could not retrieve message keys from redis. Err: %s. DB: %", err.Error())
+		log.ERROR.Printf("Could not retrieve message keys from redis. Error: %s", err.Error())
 	}
 	val := stringCmd.Val()
 
-	receiveCount := "0"
-	if val != "" {
-		receiveCount = val
+	receiveCount := val
+	if val == "" {
+		receiveCount = "1"
+		boolCmd := b.rclient.HSet(gHash, hSetRetryKey, 1)
+		if err := boolCmd.Err(); err != nil {
+			log.ERROR.Printf("Could not set retry count for message in HSet. Error: %s", err.Error())
+		}
 	}
 
 	signature.Attributes = map[string]*string{}
