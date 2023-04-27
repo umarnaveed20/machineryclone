@@ -314,18 +314,18 @@ func (b *BrokerGR_DLQ) consumeOne(delivery []byte, taskProcessor iface.TaskProce
 		return nil
 	}
 
-	sliceCmd := b.rclient.HMGet(gHash, hSetRetryKey)
-	if err := sliceCmd.Err(); err != nil {
+	stringCmd := b.rclient.HGet(gHash, hSetRetryKey)
+	if err := stringCmd.Err(); err != nil {
 		log.ERROR.Printf("Could not retrieve message keys from redis. Err: %s. DB: %", err.Error())
 	}
-	values := sliceCmd.Val()
+	val := stringCmd.Val()
 
-	retryCount := 0
-	if values[0] != nil {
-		retryCount = values[0].(int)
+	receiveCount := "0"
+	if val != "" {
+		receiveCount = val
 	}
 
-	signature.RetryCount = retryCount
+	signature.Attributes["ApproximateReceiveCount"] = &receiveCount
 
 	log.DEBUG.Printf("Received new message: %+v", signature)
 	log.INFO.Printf("Processing task. Old UUID: %s New UUID: %s", oldUuid, signature.UUID)
