@@ -325,6 +325,7 @@ func (b *BrokerGR_DLQ) consumeOne(delivery []byte, taskProcessor iface.TaskProce
 		receiveCount = val
 	}
 
+	signature.Attributes = map[string]*string{}
 	signature.Attributes["ApproximateReceiveCount"] = &receiveCount
 
 	log.DEBUG.Printf("Received new message: %+v", signature)
